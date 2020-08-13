@@ -1,0 +1,43 @@
+---
+title: "Rutas en R Markdown"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Este es un archivo de R Markdown, es un archivo de texto en el que podemos
+mezclar texto y código de R para generar documentos HTML, PDF, DOC, ...
+
+Cuando presionamos el botón **Knit** (tejer en inglés) se genera un documento 
+que incluye texto formateado y las salidas del código de R.
+
+Antes de evaluar el código de abajo, o tejer el documento, escribe tus 
+predicciones para cada bloque de código.
+
+```{r revisa-wd}
+getwd()
+```
+
+```{r cambia-wd}
+setwd("..") # Los dos puntos .. significan moverse un folder hacia arriba
+getwd()
+```
+
+```{r revisa-wd-3}
+getwd()
+```
+
+Cambia el valor de eval a TRUE, y escribe una instrucción para leer los datos, 
+¿cómo debe ser la ruta?
+
+```{r, eval=TRUE}
+datos <- read.csv(here::here("datos/2019_rama-pm25.csv"))
+head(datos)
+```
+
+
+
+
+

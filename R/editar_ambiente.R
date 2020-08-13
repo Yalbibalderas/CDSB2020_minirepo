@@ -1,0 +1,3 @@
+usethis::edit_r_environ()
+R_HISTSIZE=2
+GITHUB_PAT =d6b5fd5d9383192f2af5fa773461b2e49f516140

@@ -1,0 +1,475 @@
+---
+title: "Recomendaciones para escribir funciones en R"
+author: "Alejandro Reyes"
+date: "August 4, 2020"
+vignette: >
+  %\VignetteIndexEntry{EfficientR}
+  %\VignetteEngine{knitr::rmarkdown}
+output: 
+  BiocStyle::html_document
+---
+
+# Introducción
+
+Escribir una función en R consiste en reorganizar código para que acepte una 
+entrada y genere una salida. Por ejemplo, supongamos que tenemos una matriz 
+`mat` con datos normalizados de datos de expresión de células únicas. Queremos 
+escribir un código en R que seleccione los 100 genes con más varianza y hacer 
+un diagrama de puntos de los primeros dos vectores de un análisis principal de 
+componentes (basados en los 100 genes). 
+
+El código se puede leer así:
+
+```{r}
+
+mat <- matrix(rpois(100*10000, lambda = 8), ncol=100)
+
+library(matrixStats)
+library(ggplot2)
+
+sel <- head(order(rowVars(mat), decreasing=TRUE), 100)
+pca_results <- prcomp(t(mat[sel,]))
+plot( pca_results$x[,"PC1"], pca_results$x[,"PC2"])
+```
+
+¿Qué harían ustedes si en vez de tener una matriz, tuvieran varias matrices a la 
+que quisieran correr el código anterior varias veces? Una función!
+
+```{r}
+a <- function(matriz){  
+  sel <- head(order(rowVars(matriz), decreasing=TRUE), 100)
+  pca_results <- prcomp(t(matriz[sel,]))
+  plot( pca_results$x[,"PC1"], pca_results$x[,"PC2"])}
+```
+
+El ejemplo anterior nos da una idea de *cuándo* escribir una función. Para que 
+una función sea funcional (valga la redundancia), se recomienda que ésta sea:
+
+1. Correcta -- que produzca el resultado esperado.
+2. Robust -- idealmente, que sea robusta a casos inesperados (por ejemplo, valores NA). Véase el término [programación defensiva](https://es.wikipedia.org/wiki/Programaci%C3%B3n_defensiva). 
+3. Entendible -- que el código se pueda leer.
+4. Eficiente -- si lo anterior se cumple, nos empezamos a preocupar que la función sea rápida.
+   
+# Correcta
+
+Ejemplo de herramientas para que una función sea correcta. 
+
+- `identical()`: equivalencia exacta entre dos valores
+- `all.equal()`: equivalencia numérica, hasta un cierto tipo de tolerancia
+
+Ejemplo: Aproximación de $\pi$ evaluando la siguiente sumatoria con un valor muy grande de `m`.
+
+\begin{equation}
+\frac{\pi}{4} =  \lim_{m\to\infty}\sum_{n=0}^{m} \frac{(-1)^n}{2n+1}
+\end{equation}
+
+La implementación de la ecuación anterior en *R* sería:
+
+```{r}
+compute_pi <- function(m) {
+    s = 0
+    sign = 1
+    for (n in 0:m) {
+        s = s + sign / (2 * n + 1)
+        sign = -sign
+    }
+    4 * s
+}
+```
+
+¿Cómo podemos asegurarnos de que nuestro resultado sea correcto usando las 
+funciones anteriores?
+
+```{r}
+pi_approx <- compute_pi(1000000)
+identical(pi, pi_approx)
+all.equal(pi, pi_approx)
+all.equal(pi, pi_approx, tolerance = 1e-6)
+```
+
+Normalmente, este tipo de revisiones se implementan como [pruebas unitarias](https://es.wikipedia.org/wiki/Prueba_unitaria). Por ejemplo, una 
+prueba unitaria para el ejemplo anterior usando el paquete *testthat*:
+
+```{r}
+library(testthat)
+test_that( "la funcion pi da el valor esperado", {
+ 
+})
+```
+
+# Robusta
+
+Siempre que escribamos funciones, es bueno tener en cuenta el concepto de 
+(programación defensiva)[https://es.wikipedia.org/wiki/Programaci%C3%B3n_defensiva]. 
+En resumen este concepto nos dice que cuando escribamos funciones, debemos 
+asumir que el usuario siempre la usará de manera incorrecta y como programadores 
+tenemos que guiar al usuario asegurandonos que las entradas de la función 
+sean correctas y, al no ser así, vamos a tener un error informativo.
+
+Veamos el siguiente ejemplo:
+
+```{r}
+fun <- function(n) {
+    sapply(1:n, sqrt)
+}
+```
+
+Aparentemente, la función es nos da el resultado esperado: 
+
+```{r}
+identical(sqrt(1:5), fun(5))
+```
+
+Pero no es robusta a todo tipo de entradas:
+
+```{r}
+identical(sqrt(numeric()), fun(0))
+fun(-1)
+```
+
+¿Cuál es el problema? `1:n` produce una secuencia de números incorrecta 
+cuando `n < 1`.
+
+¿Alguna solución? Pista: usar `seq_len()` en vez de `:`.
+
+```{r}
+fun1 <- function(n){
+    sapply(seq_len(n), sqrt)
+}
+```
+
+¿Se solucionó algo?
+
+```{r}
+identical(sqrt(1:5), fun1(5))
+identical(sqrt(numeric(0)), fun1(0))
+try(fun1(-1))
+```
+
+¿Cuál es el problema? `sapply(numeric(), sqrt)` regresa una lista en vez de un 
+vector de dimensión 0. Pero arreglamos esto usando la función `vapply()` en vez 
+de `sapply()`:
+
+```{r}
+fun2 <- function(n) {
+    vapply(seq_len(n), sqrt, FUN.VALUE = numeric(1))
+}
+```
+
+Vemos en nuestras revisiones que la función ahora es robusta para casos donde 
+la dimensión de nuestro vector es igual a cero. Sin embargo, parece que sigue 
+fallando cuando la entrada es un número negativo:  
+
+```{r}
+identical(sqrt(1:5), fun2(5))
+identical(sqrt(numeric(0)), fun2(0))
+try(fun2(-1))
+
+fun1 <- function(n) {
+  if(n <= 0){
+    message("Negative numbers must have imaginaries results")} 
+  else {     sapply(seq_len(n), sqrt)}}
+```
+
+Implementar revisiones de las entradas.
+
+```{r}
+fun3 <- function(n) {
+## ingresa tu solucion aqui
+  vapply(seq_len(n), sqrt, FUN.VALUE = numeric(1))
+}
+```
+
+```{r}
+identical(sqrt(1:5), fun3(5))
+identical(sqrt(numeric(0)), fun3(0))
+try(fun3(-1))
+```
+
+Siempre podemos usar pruebas unitarias para revisar que tenemos un error en 
+la función cuando queramos un error. 
+
+```{r}
+library(testthat)
+test_that("La funcion fun2 da el resultado esperado", {
+    expect_identical(sqrt(1:5), fun3(5))
+})
+test_that("La funcion fun2 es robusta", {
+    expect_identical(numeric(0), fun3(0))
+    expect_error(fun3(-1), "tiene que ser un valor numérico positivo")
+})
+```
+
+¿Cuál función es mas sencilla, `fun2()` o `fun3()`? 
+
+Hay una medida que nos permite medir la complejidad ciclomática de una función. 
+La complejidad ciclomática provee una medida cuantitativa de la complejidad 
+lógica de un programa. En *R*, el paquete `cyclocomp` nos permite obtener estas 
+métricas para nuestras funciones:
+
+```{r}
+library(cyclocomp)
+cyclocomp(fun2)
+cyclocomp(fun3)
+```
+
+Noten que `fun3()` es mas robusta que `fun2()` al dar un mensaje informativo. 
+Sin embargo, pagamos una penal de hacerla robusta dado que aumentamos su 
+complejidad. Idealmente, queremos que una función sea lo menos complicada 
+posible.
+
+# Entendible
+
+Es común caer en la trampa de hacer una función super complicada por querer
+que sea lo más robusta posible. Por ejemplo, la función anterior la pudimos 
+haber implementado de la siguiente manera:
+
+```{r}
+fun4 <- function(n) {
+    if (n >= 1) {
+        res <- numeric(n)
+        for (i in 1:n)
+            res[i] = sqrt(i)
+    } else if (n == 0) {
+        res <- numeric(0)
+    } else {
+        stop("'n' must be a non-negative integer")
+    }
+    
+    1 / res
+}
+```
+
+Esta función tiene un razonamiento lógico muy complicado, cada `if()` esta 
+diseñado para manejar un caso específico, pero tiene una mayor complejidad 
+ciclomática.
+
+```{r}
+cyclocomp(fun4)
+cyclocomp(fun3)
+cyclocomp(fun2)
+```
+
+En ocasiones, algunas funciones son intrinsicamente complejas. En estos casos, 
+la mejor opción es separar la funcion en funciones más pequeñas con menor
+complejidad ciclomática. Los beneficios de esta modularización son:
+
+- Es más fácil escribir pruebas unitarias, por lo tanto el código es más robusto.
+- Reutilización de funciones es más fácil.
+
+# Eficiente
+
+Una vez que nuestro código sea correcto, robusto y simple, nos empezamos
+a preocupar por que sea eficiente. Las siguientes herramientas nos ayudan
+a escribir código eficiente:
+
+`Rprof()` es útil para identificar código ineficiente.
+
+`system.time()` nos dice la duración de ejecutar un código.
+
+`microbenchmark()` es útil para comparar la eficiencia de
+varias funciones.
+
+## Código eficiente: Vectorization
+
+Problema: las funciones de iteración en R (`for`, `lapply()`, `sapply()`, `vapply()`, `mapply()`, `apply()`, ...) aplicadas a un vector n-dimensional, va a invocar a las funciones `n` veces. 
+
+Solución: Usar vectorización
+
+Ejemplo:
+
+```{r}
+compute_pi0 <- function(m) {
+    s = 0
+    sign = 1
+    for (n in 0:m) {
+        s = s + sign / (2 * n + 1)
+        sign = -sign
+    }
+    4 * s
+}
+```
+
+```{r}
+compute_pi1 <- function(m) {
+
+}
+```
+
+```{r}
+m <- 1e6
+all.equal(compute_pi0(m), compute_pi1(m))
+```
+
+```{r}
+m <- 1e6
+system.time(compute_pi0(m))
+system.time(compute_pi1(m))
+```
+
+```{r}
+library(microbenchmark)
+m <- 1e4
+result <- microbenchmark(
+    compute_pi0(m),
+    compute_pi1(m),
+    compute_pi0(m * 10),
+    compute_pi1(m * 10),
+    compute_pi0(m * 100),
+    compute_pi1(m * 100),
+    compute_pi0(m * 1000),
+    compute_pi1(m * 1000),
+    times = 40
+)
+
+as.data.frame(result) %>%
+  dplyr::mutate( 
+    func=gsub("^(\\S+)\\(m.*", "\\1", expr, perl=TRUE), 
+    m=gsub("^(\\S+)\\((m.*)\\)", "\\2", expr, perl=TRUE) ) %>%
+  ggplot( aes( m, log10(time), col=func) ) +
+  geom_boxplot() +
+  labs(y=expression("Tiempo en nanosegundos ("*log[10]*")"), 
+       x="Valor m", col="Función")
+```
+
+## Código eficiente: Prealocación de memoria
+
+Problema: para 'crecer' un vector en R se puede copiar un vector chico en un 
+vector mas grande, pero el proceso de copiar y pegar es un proceso muy lento.
+
+Solution: prealocar un vector en memoria y llenarlo después. Las funciones de 
+la familia `lapply()` hacen esto por defecto y por tanto mas sencillas de usar a
+los `for()` loops.
+
+```{r}
+memory_copy1 <- function(n) {
+    result <- numeric()
+    for (i in seq_len(n))
+        result <- c(result, 1/i)
+    result
+}
+```
+
+```{r}
+memory_copy2 <- function(n) {
+    result <- numeric()
+    for (i in seq_len(n))
+        result[i] <- 1 / i
+    result
+}
+```
+
+```{r}
+pre_allocate1 <- function(n) {
+    result <- numeric(n)
+    for (i in seq_len(n))
+        result[i] <- 1 / i
+    result
+}
+```
+
+```{r}
+pre_allocate2 <- function(n) {
+    vapply(seq_len(n), function(i) 1 / i, numeric(1))
+}
+```
+
+```{r}
+vectorized <- function(n) {
+    1 / seq_len(n)
+}
+```
+
+
+```{r}
+n <- 100
+identical(memory_copy1(n), memory_copy2(n))
+identical(memory_copy1(n), pre_allocate1(n))
+identical(memory_copy1(n), pre_allocate2(n))
+identical(memory_copy1(n), vectorized(n))
+```
+
+
+```{r}
+n <- 10000
+microbenchmark(
+    memory_copy1(n),
+    memory_copy2(n),
+    pre_allocate1(n),
+    pre_allocate2(n),
+    vectorized(n),
+    times = 10, unit = "relative"
+)
+```
+
+```{r}
+cyclocomp(pre_allocate1)
+cyclocomp(pre_allocate2)
+cyclocomp(vectorized)
+```
+
+## Código eficiente: Siempre operar en vectores
+
+Problema: para actualizar un data.frame en R, se copia el data.frame entero.
+
+Solución: operar siempre en vectores, y copiar la solución final al data.frame
+una sola vez.
+
+Ejemplo: https://stackoverflow.com/questions/51056820
+
+```{r}
+n <- 1e4
+df <- data.frame(Index = 1:n, A = seq(10, by = 1, length.out = n))
+f1 <- function(df) {
+    ## constants
+    cost1 <- 3
+    cost2 <- 0.05
+    cost3 <- 50
+    ## update data.frame -- copies entire data frame each time!
+    df$S[1] <- cost1
+    for (j in 2:(n))
+        df$S[j] <- df$S[j - 1] - cost3 + df$S[j - 1] * cost2 / 12
+    ## return result
+    df
+}
+```
+
+```{r}
+.f2helper <- function(cost1, cost2, cost3, n) {
+    ## create the result vector separately
+    cost2 <- cost2 / 12   # 'hoist' common operations
+    result <- numeric(n)
+    result[1] <- cost1
+    for (j in 2:(n))
+        result[j] <- (1 + cost2) * result[j - 1] - cost3
+    result
+}
+f2 <- function(df) {
+    cost1 <- 3
+    cost2 <- 0.05
+    cost3 <- 50
+    ## update the data.frame once
+    df$S <- .f2helper(cost1, cost2, cost3, n)
+    df
+}
+```
+
+```{r}
+all.equal(f1(df), f2(df))
+```
+
+```{r}
+microbenchmark(
+    f1(df),
+    f2(df),
+    times = 5, unit = "relative"
+)
+```
+
+## Fuentes y reproducibilidad
+
+Parte de este tutorial fue traducido de tutoriales de Martin Morgan. 
+
+```{r}
+sessionInfo()
+```
